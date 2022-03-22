@@ -29,7 +29,7 @@ func main() {
 
 		// 初始化 Consumer Server
 		func() *consumerserver.Component {
-			// 依赖 `ekafka` 管理 Kafka consumer
+			// 依赖 `ekafka` 管理 Kafka simple
 			ec = ekafka.Load("kafka").Build()
 			cs := consumerserver.Load("kafkaConsumerServers.s1").Build(
 				consumerserver.WithEkafka(ec),

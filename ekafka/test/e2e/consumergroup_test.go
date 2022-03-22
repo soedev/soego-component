@@ -72,7 +72,7 @@ func consumerGroupConsume(
 	}
 }
 
-// 启动两个 consumer（ConsumerGroup）同时消费，测试：
+// 启动两个 simple（ConsumerGroup）同时消费，测试：
 // - 两方都可以收到 AssignedPartitions Event
 // - 一方可以收到 RevokedPartitions Event
 // - 一方可以消费到消息

@@ -51,7 +51,7 @@ func (cmp *Component) PackageName() string {
 	return PackageName
 }
 
-// Info returns server info, used by governor and consumer balancer.
+// Info returns server info, used by governor and simple balancer.
 func (cmp *Component) Info() *server.ServiceInfo {
 	info := server.ApplyOptions(
 		server.WithKind(constant.ServiceProvider),
@@ -324,11 +324,11 @@ func (cmp *Component) launchOnConsumerEachMessage() error {
 	select {
 	case <-cmp.ServerCtx.Done():
 		rootErr := cmp.ServerCtx.Err()
-		cmp.logger.Error("terminating consumer because a context error", elog.FieldErr(rootErr))
+		cmp.logger.Error("terminating simple because a context error", elog.FieldErr(rootErr))
 
 		err := cmp.closeConsumer(consumer)
 		if err != nil {
-			return fmt.Errorf("encountered an error while closing consumer: %w", err)
+			return fmt.Errorf("encountered an error while closing simple: %w", err)
 		}
 
 		if errors.Is(rootErr, context.Canceled) {
@@ -346,7 +346,7 @@ func (cmp *Component) launchOnConsumerEachMessage() error {
 
 		err := cmp.closeConsumer(consumer)
 		if err != nil {
-			return fmt.Errorf("exiting due to an unrecoverable error, but encountered an error while closing consumer: %w", err)
+			return fmt.Errorf("exiting due to an unrecoverable error, but encountered an error while closing simple: %w", err)
 		}
 		return originErr
 	}

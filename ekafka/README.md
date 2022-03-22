@@ -102,11 +102,11 @@ func main() {
 
 ```toml
 [kafka.consumerGroups.cg1]
-# GroupID is the name of the consumer group.
+# GroupID is the name of the simple group.
 groupID = "group-1"
 # The topic to read messages from.
 topic = "my-topic"
-# HeartbeatInterval sets the optional frequency at which the reader sends the consumer
+# HeartbeatInterval sets the optional frequency at which the reader sends the simple
 # group heartbeat update.
 #
 # Default: 3s
@@ -117,11 +117,11 @@ heartbeatInterval = "3s"
 #
 # Default: 5s
 partitionWatchInterval = "5s"
-# WatchForPartitionChanges is used to inform kafka-go that a consumer group should be
+# WatchForPartitionChanges is used to inform kafka-go that a simple group should be
 # polling the brokers and rebalancing if any partition changes happen to the topic.
 watchPartitionChanges = false
 # SessionTimeout optionally sets the length of time that may pass without a heartbeat
-# before the coordinator considers the consumer dead and initiates a rebalance.
+# before the coordinator considers the simple dead and initiates a rebalance.
 #
 # Default: 30s
 sessionTimeout = "30s"
@@ -132,17 +132,17 @@ sessionTimeout = "30s"
 # Default: 30s
 rebalanceTimeout = "30s"
 # JoinGroupBackoff optionally sets the length of time to wait before re-joining
-# the consumer group after an error.
+# the simple group after an error.
 #
 # Default: 5s
 joinGroupBackoff = "5s"
-# StartOffset determines from whence the consumer group should begin
+# StartOffset determines from whence the simple group should begin
 # consuming when it finds a partition without a committed offset.  If
 # non-zero, it must be set to one of FirstOffset or LastOffset.
 #
 # Default: `-2` (FirstOffset)
 startOffset = "-2"
-# RetentionTime optionally sets the length of time the consumer group will
+# RetentionTime optionally sets the length of time the simple group will
 # be saved by the broker.  -1 will disable the setting and leave the
 # retention up to the broker's offsets.retention.minutes property.  By
 # default, that setting is 1 day for kafka < 2.0 and 7 days for kafka >=
@@ -150,14 +150,14 @@ startOffset = "-2"
 #
 # Default: -1
 retentionTime = "-1"
-# MinBytes indicates to the broker the minimum batch size that the consumer
+# MinBytes indicates to the broker the minimum batch size that the simple
 # will accept. Setting a high minimum when consuming from a low-volume topic
 # may result in delayed delivery when the broker does not have enough data to
 # satisfy the defined minimum.
 #
 # Default: 1
 minBytes = 1
-# MaxBytes indicates to the broker the maximum batch size that the consumer
+# MaxBytes indicates to the broker the maximum batch size that the simple
 # will accept. The broker will truncate a message to satisfy this maximum, so
 # choose a value that is high enough for your largest message size.
 #
@@ -270,7 +270,7 @@ func main() {
 
 		// 初始化 Consumer Server
 		func() *consumerserver.Component {
-			// 依赖 `ekafka` 管理 Kafka consumer
+			// 依赖 `ekafka` 管理 Kafka simple
 			ec := ekafka.Load("kafka").Build()
 			cs := consumerserver.Load("kafkaConsumerServers.s1").Build(
 				consumerserver.WithEkafka(ec),

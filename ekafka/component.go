@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/segmentio/kafka-go"
 	"github.com/soedev/soego/core/elog"
 	"github.com/soedev/soego/core/etrace"
-	"github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -117,7 +117,7 @@ func (cmp *Component) Consumer(name string) *Consumer {
 	config, ok := cmp.config.Consumers[name]
 	if !ok {
 		cmp.consumerMu.Unlock()
-		cmp.logger.Panic("consumer config not exists", elog.String("name", name))
+		cmp.logger.Panic("simple config not exists", elog.String("name", name))
 	}
 	logger := newKafkaLogger(cmp.logger)
 	errorLogger := newKafkaErrorLogger(cmp.logger)
