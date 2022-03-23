@@ -77,12 +77,15 @@ func (cmp *Component) Producer(name string) *Producer {
 }
 
 //批量初始化消费者
-func (cmp *Component) InitConsumers() {
+func (cmp *Component) InitConsumers(msgHandle AckHandle) {
 	if len(cmp.config.Consumers) == 0 {
 		cmp.logger.Panic("consumes config len == 0")
 	}
 	for cs := range cmp.config.Consumers {
-		cmp.Consumer(cs)
+		consumer := cmp.Consumer(cs)
+		if handle, needAck, err := consumer.HandMessage(false, false, false, nil); err == nil {
+			go msgHandle(handle, needAck)
+		}
 	}
 }
 

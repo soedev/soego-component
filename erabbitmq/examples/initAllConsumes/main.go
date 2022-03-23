@@ -6,6 +6,7 @@ import (
 	"github.com/soedev/soego"
 	"github.com/soedev/soego-component/erabbitmq"
 	"github.com/soedev/soego/core/elog"
+	"github.com/streadway/amqp"
 	"os"
 	"os/signal"
 	"sync"
@@ -31,25 +32,20 @@ var rmqClient *erabbitmq.Component
 //初始化emqtt
 func initRabbitMq() error {
 	rmqClient = erabbitmq.Load("rabbitmq").Build()
-	//handMessage(rmqClient.Consumer("c1"))
-	sendMsg(rmqClient.Producer("p1"))
+	rmqClient.InitConsumers(handMessage)
+	//sendMsg(rmqClient.Producer("p1"))
 	return nil
 }
 
-func handMessage(consumer *erabbitmq.Consumer) {
-	msgs, needAck, err := consumer.HandMessage(false, false, false, nil)
-	if err != nil {
-		elog.Error(err.Error())
-	}
-	go func() {
-		for d := range msgs {
-			elog.Info(fmt.Sprintf(" [x] %s", d.Body))
-			if needAck {
-				d.Ack(false)
-			}
+func handMessage(deliveries <-chan amqp.Delivery, needAck bool) {
+	for d := range deliveries {
+		elog.Info(fmt.Sprintf(" [x] %s needAck=%v", d.Body, needAck))
+		if needAck {
+			d.Ack(false)
 		}
-	}()
+	}
 }
+
 func sendMsg(producer *erabbitmq.Producer) {
 	var wg sync.WaitGroup
 	wg.Add(1)

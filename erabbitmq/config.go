@@ -21,6 +21,7 @@ type consumerConfig struct {
 	Queue      queueDeclare    `json:"queue" toml:"queue"`           //消息队列设置， 如果配置了交换机会默认生效一个 临时匿名队列（可以理解为配置了交换机 队列可以不配置）
 	Qos        qos             `json:"qos" toml:"qos"`               //交换机配置了，此参数被忽略
 	RoutingKey string          `json:"routingKey" toml:"routingKey"` //交换机配置了，此参数必须配置，（用于配置路由规则绑定在消息队列上）
+	AutoAck    bool            `json:"autoAck" toml:"autoAck"`       //默认：false  需要在消息处理中 d.ack(false)
 }
 
 //配置消费公平调度：多个消费者，谁有空闲就调度给谁，可以设置预取值为 1

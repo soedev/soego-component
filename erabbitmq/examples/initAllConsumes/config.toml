@@ -4,6 +4,7 @@ url = "amqp://guest:guest@localhost:5672"
 
 #配置消费者1
 [rabbitmq.consumers.c1]
+autoAck = true #代表不需要手动 d.ack(false)
 routingKey = "#" #只有配置了exchange 才有效，用来绑定路由规则，#代表匹配所有规则
 [rabbitmq.consumers.c1.exchange]
 name = "logs_topic"
@@ -19,10 +20,28 @@ prefetchCount = 1
 prefetchSize = 0
 global = false
 
+#配置消费者2 跟消费1的区别在于 绑定的key 有了限制
+[rabbitmq.consumers.c2]
+routingKey = "*.test" #只有配置了exchange 才有效，用来绑定路由规则，#代表匹配所有规则
+[rabbitmq.consumers.c2.exchange]
+name = "logs_topic"
+kind = "topic"
+durable = true
+[rabbitmq.consumers.c2.queue]
+name = "" #配置空代表匿名通道 rabbitmq 自动生成
+durable = true
+exclusive = true #表示没有连接时候 通道自动关闭
+[rabbitmq.consumers.c2.qos]
+enable = true #启用公平调度，本次配置含义，表示每次预分配1个给自己，默认机制会调度分配，通过设置此参数做到 合理根据处理情况来公平分配
+prefetchCount = 1
+prefetchSize = 0
+global = false
+
+
 #配置生产者1
 [rabbitmq.producers.p1]
 type = "exchange" #exchange 交换机模式，queue 队列模式（默认）
-routingKey = "hello.test"
+routingKey = "hello"
 [rabbitmq.producers.p1.exchange]
 name = "logs_topic"
 kind = "topic"

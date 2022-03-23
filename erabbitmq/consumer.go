@@ -110,12 +110,12 @@ func (r *Consumer) initConsumer() error {
 }
 
 //对外的消息处理消息入口：  配置没有自动ack 在处理消息的时候一定要 ack(false)
-func (r *Consumer) HandMessage(autoAck, exclusive, noLocal, noWait bool, args amqp.Table) (<-chan amqp.Delivery, error) {
+func (r *Consumer) HandMessage(exclusive, noLocal, noWait bool, args amqp.Table) (<-chan amqp.Delivery, bool, error) {
 	deliveries := make(chan amqp.Delivery)
 	//恢复连接后 消息的处理也要支持自动回复
 	go func() {
 		for {
-			d, err := r.ch.Consume(r.q.Name, "", autoAck, exclusive, noLocal, noWait, args)
+			d, err := r.ch.Consume(r.q.Name, "", r.config.AutoAck, exclusive, noLocal, noWait, args)
 			if err != nil {
 				log.Printf("consume failed, err: %v", err)
 				time.Sleep(delay * time.Second)
@@ -138,7 +138,7 @@ func (r *Consumer) HandMessage(autoAck, exclusive, noLocal, noWait bool, args am
 			}
 		}
 	}()
-	return deliveries, nil
+	return deliveries, !r.config.AutoAck, nil
 }
 
 func (r *Consumer) Close() {
