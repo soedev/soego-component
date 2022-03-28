@@ -34,7 +34,7 @@ type config struct {
 func DefaultConfig() *config {
 	return &config{
 		DSN:           "",
-		Debug:         true,
+		Debug:         false,
 		SocketTimeout: xtime.Duration("300s"),
 		PoolLimit:     100,
 	}
