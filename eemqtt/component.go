@@ -73,9 +73,6 @@ func (c *Component) connServer() {
 		ConnectTimeout:    c.config.ConnectTimeout,
 		Debug:             paho.NOOPLogger{},
 		OnConnectionUp: func(cm *autopaho.ConnectionManager, connAck *paho.Connack) {
-			if c.config.EnableMetricInterceptor {
-				emetric.ClientHandleCounter.Inc("emqtt", c.name, "OnConnectionUp", c.config.ServerURL, "OK")
-			}
 			c.logger.Info("mqtt connection up")
 			sOs := make(map[string]paho.SubscribeOptions)
 			for st := range c.config.SubscribeTopics {
