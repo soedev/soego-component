@@ -7,6 +7,7 @@ import (
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/soedev/soego/core/elog"
+	"github.com/soedev/soego/core/emetric"
 	"net/url"
 	"sync"
 	"time"
@@ -72,20 +73,42 @@ func (c *Component) connServer() {
 		ConnectTimeout:    c.config.ConnectTimeout,
 		Debug:             paho.NOOPLogger{},
 		OnConnectionUp: func(cm *autopaho.ConnectionManager, connAck *paho.Connack) {
+			if c.config.EnableMetricInterceptor {
+				emetric.ClientHandleCounter.Inc("emqtt", c.name, "OnConnectionUp", c.config.ServerURL, "OK")
+			}
 			c.logger.Info("mqtt connection up")
 			sOs := make(map[string]paho.SubscribeOptions)
 			for st := range c.config.SubscribeTopics {
 				sOs[c.config.SubscribeTopics[st].Topic] = paho.SubscribeOptions{QoS: c.config.SubscribeTopics[st].Qos}
 			}
+			var err error
 			if len(sOs) > 0 {
-				if _, err := cm.Subscribe(context.Background(), &paho.Subscribe{
+				if _, err = cm.Subscribe(context.Background(), &paho.Subscribe{
 					Subscriptions: sOs,
 				}); err != nil {
-					c.logger.Panic(fmt.Sprintf("failed to subscribe (%v). This is likely to mean no messages will be received.", sOs), elog.FieldErr(err))
+					c.logger.Error(fmt.Sprintf("failed to subscribe (%v). This is likely to mean no messages will be received.", sOs), elog.FieldErr(err))
+				}
+			}
+			if c.config.EnableMetricInterceptor {
+				emetric.ClientHandleCounter.Inc("emqtt", c.name, "Connect", c.config.ServerURL, "OK")
+				if len(sOs) > 0 {
+					for so := range sOs {
+						if err != nil {
+							emetric.ClientHandleCounter.Inc("emqtt", c.name, "subscribe_"+so, c.config.ServerURL, "Error")
+						} else {
+							emetric.ClientHandleCounter.Inc("emqtt", c.name, "subscribe_"+so, c.config.ServerURL, "OK")
+						}
+
+					}
 				}
 			}
 		},
-		OnConnectError: func(err error) { c.logger.Error("error whilst attempting connection", elog.FieldErr(err)) },
+		OnConnectError: func(err error) {
+			c.logger.Error("error whilst attempting connection", elog.FieldErr(err))
+			if c.config.EnableMetricInterceptor {
+				emetric.ClientHandleCounter.Inc("emqtt", c.name, "Connect", c.config.ServerURL, "Error")
+			}
+		},
 		ClientConfig: paho.ClientConfig{
 			ClientID: c.config.ClientID,
 			Router: paho.NewSingleHandlerRouter(func(pp *paho.Publish) {
@@ -95,12 +118,20 @@ func (c *Component) connServer() {
 					c.logger.Info("Received message, but no handler is defined")
 				}
 			}),
-			OnClientError: func(err error) { c.logger.Error("server requested disconnect", elog.FieldErr(err)) },
+			OnClientError: func(err error) {
+				c.logger.Error("server requested disconnect", elog.FieldErr(err))
+				if c.config.EnableMetricInterceptor {
+					emetric.ClientHandleCounter.Inc("emqtt", c.name, "Connect", c.config.ServerURL, "Error")
+				}
+			},
 			OnServerDisconnect: func(d *paho.Disconnect) {
 				if d.Properties != nil {
 					c.logger.Info(fmt.Sprintf("server requested disconnect: %s\n", d.Properties.ReasonString))
 				} else {
 					c.logger.Info(fmt.Sprintf("server requested disconnect; reason code: %d\n", d.ReasonCode))
+				}
+				if c.config.EnableMetricInterceptor {
+					emetric.ClientHandleCounter.Inc("emqtt", c.name, "Connect", c.config.ServerURL, "Error")
 				}
 			},
 		},

@@ -10,15 +10,16 @@ import (
     WebSocket 自定义连接方式
 */
 type config struct {
-	ServerURL         string                    `json:"serverURL" toml:"serverURL"`                 //连接地址  tcp://host:1883  ws://mosquitto:80
-	Username          string                    `json:"username" toml:"username"`                   //用户名
-	Password          string                    `json:"password" toml:"password"`                   //密码
-	ClientID          string                    `json:"clientID" toml:"clientID"`                   //客户端标识
-	KeepAlive         uint16                    `json:"keepAlive" toml:"keepAlive"`                 //默认值 30
-	ConnectRetryDelay time.Duration             `json:"connectRetryDelay" toml:"connectRetryDelay"` //default 10s
-	ConnectTimeout    time.Duration             `json:"connectTimeout" toml:"connectTimeout"`       //default 10s
-	SubscribeTopics   map[string]subscribeTopic `json:"subscribeTopics" toml:"subscribeTopics"`     //连接后自动订阅主题
-	Debug             bool                      `json:"debug" toml:"debug"`                         // Debug 是否开启debug模式
+	ServerURL               string                    `json:"serverURL" toml:"serverURL"`                             //连接地址  tcp://host:1883  ws://mosquitto:80
+	Username                string                    `json:"username" toml:"username"`                               //用户名
+	Password                string                    `json:"password" toml:"password"`                               //密码
+	ClientID                string                    `json:"clientID" toml:"clientID"`                               //客户端标识
+	KeepAlive               uint16                    `json:"keepAlive" toml:"keepAlive"`                             //默认值 30
+	ConnectRetryDelay       time.Duration             `json:"connectRetryDelay" toml:"connectRetryDelay"`             //default 10s
+	ConnectTimeout          time.Duration             `json:"connectTimeout" toml:"connectTimeout"`                   //default 10s
+	SubscribeTopics         map[string]subscribeTopic `json:"subscribeTopics" toml:"subscribeTopics"`                 //连接后自动订阅主题
+	Debug                   bool                      `json:"debug" toml:"debug"`                                     // Debug 是否开启debug模式
+	EnableMetricInterceptor bool                      `json:"enableMetricInterceptor" toml:"enableMetricInterceptor"` // 是否开启监控，默认开启
 }
 
 //订阅主题
@@ -30,12 +31,13 @@ type subscribeTopic struct {
 // DefaultConfig 返回默认配置
 func DefaultConfig() *config {
 	return &config{
-		Debug:             false,
-		KeepAlive:         30,
-		ConnectRetryDelay: time.Second * 10,
-		ConnectTimeout:    time.Second * 10,
-		ClientID:          "",
-		SubscribeTopics:   make(map[string]subscribeTopic),
+		Debug:                   false,
+		KeepAlive:               30,
+		ConnectRetryDelay:       time.Second * 10,
+		ConnectTimeout:          time.Second * 10,
+		EnableMetricInterceptor: true,
+		ClientID:                "",
+		SubscribeTopics:         make(map[string]subscribeTopic),
 	}
 }
 
