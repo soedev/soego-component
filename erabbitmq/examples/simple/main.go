@@ -31,7 +31,7 @@ var rmqClient *erabbitmq.Component
 //初始化emqtt
 func initRabbitMq() error {
 	rmqClient = erabbitmq.Load("rabbitmq").Build()
-	//handMessage(rmqClient.Consumer("c1"))
+	handMessage(rmqClient.Consumer("c1"))
 	sendMsg(rmqClient.Producer("p1"))
 	return nil
 }

@@ -7,48 +7,80 @@ import (
 	"time"
 )
 
+type processor func(fn processFn) error
+type processFn func(*cmd) error
+
+type cmd struct {
+	name string
+	req  []interface{}
+	res  interface{}
+}
+
+func logCmd(logMode bool, c *cmd, name string, res interface{}, req ...interface{}) {
+	// 只有开启log模式才会记录req、res
+	if logMode {
+		c.name = name
+		c.req = append(c.req, req...)
+		c.res = res
+	}
+}
+
 const delay = 3
 
 type Client struct {
-	cc      *amqp.Connection
-	logMode bool
+	cc        *amqp.Connection
+	processor processor
+	logMode   bool
 }
 
-func Connect(config *config, logger *elog.Component) (wc *Client) {
-	wc = &Client{}
-	wc.Connect(config.Url, logger)
+func Connect(c *Container) (wc *Client) {
+	wc = &Client{logMode: c.config.Debug}
+	wc.wrapProcessor(InterceptorChain(c.config.interceptors...))
+	wc.Connect(c)
 	return wc
 }
 
-//建立连接
-func (wc *Client) Connect(url string, logger *elog.Component) {
-	conn, err := amqp.Dial(url)
-	if err != nil {
-		logger.Panic("connect fialed", elog.FieldErr(err))
+func (wc *Client) wrapProcessor(wrapFn func(processFn) processFn) {
+	wc.processor = func(fn processFn) error {
+		return wrapFn(fn)(&cmd{req: make([]interface{}, 0, 1)})
 	}
-	wc.cc = conn
+}
+
+//建立连接
+func (wc *Client) Connect(container *Container) {
+	var err error
+	err = wc.processor(func(c *cmd) error {
+		logCmd(wc.logMode, c, "Connect", nil)
+		wc.cc, err = amqp.Dial(container.config.Url)
+		return err
+	})
+	if err != nil {
+		container.logger.Panic("connect fialed", elog.FieldErr(err))
+	}
 	//失败重连
 	go func() {
 		for {
 			reason, ok := <-wc.cc.NotifyClose(make(chan *amqp.Error))
-			// exit this goroutine if closed by developer
 			if !ok {
-				logger.Warn("connection closed")
+				container.logger.Warn("connection closed")
 				break
 			}
-			logger.Error(fmt.Sprintf("connection closed, reason: %v", reason))
-			// reconnect if not closed by developer
+			container.logger.Error(fmt.Sprintf("connection closed, reason: %v", reason))
 			for {
-				// wait 1s for reconnect
 				time.Sleep(delay * time.Second)
-
-				conn, err := amqp.Dial(url)
+				err = wc.processor(func(c *cmd) error {
+					logCmd(wc.logMode, c, "Connect", nil)
+					conn, err := amqp.Dial(container.config.Url)
+					if err == nil {
+						wc.cc = conn
+					}
+					return err
+				})
 				if err == nil {
-					wc.cc = conn
-					logger.Info("reconnect success")
+					container.logger.Info("reconnect success")
 					break
 				}
-				logger.Error("reconnect failed", elog.FieldErr(err))
+				container.logger.Error("reconnect failed", elog.FieldErr(err))
 			}
 		}
 	}()

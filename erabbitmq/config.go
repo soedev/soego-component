@@ -1,10 +1,12 @@
 package erabbitmq
 
 type config struct {
-	Url       string                    `json:"url" toml:"url"`             //连接字符串 amqp://guest:guest@localhost:5672/
-	Debug     bool                      `json:"debug" toml:"debug"`         // Debug
-	Producers map[string]producerConfig `json:"producers" toml:"producers"` //生产者集合
-	Consumers map[string]consumerConfig `json:"consumers" toml:"consumers"` //消费者集合
+	Url                     string                    `json:"url" toml:"url"`                                         //连接字符串 amqp://guest:guest@localhost:5672/
+	Debug                   bool                      `json:"debug" toml:"debug"`                                     // Debug
+	Producers               map[string]producerConfig `json:"producers" toml:"producers"`                             //生产者集合
+	Consumers               map[string]consumerConfig `json:"consumers" toml:"consumers"`                             //消费者集合
+	EnableMetricInterceptor bool                      `json:"enableMetricInterceptor" toml:"enableMetricInterceptor"` // 是否开启监控，默认开启
+	interceptors            []Interceptor
 }
 
 //生产者配置
@@ -55,6 +57,9 @@ type exchangeDeclare struct {
 // DefaultConfig 返回默认配置
 func DefaultConfig() *config {
 	return &config{
-		Debug: true,
+		Debug:                   false,
+		EnableMetricInterceptor: true,
+		Consumers:               make(map[string]consumerConfig),
+		Producers:               make(map[string]producerConfig),
 	}
 }

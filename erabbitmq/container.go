@@ -35,13 +35,19 @@ func Load(key string) *Container {
 
 // Build 构建Container
 func (c *Container) Build(options ...Option) *Component {
+	if c.config.Debug {
+		options = append(options, WithInterceptor(debugInterceptor(c.name, c.config)))
+	}
+	if c.config.EnableMetricInterceptor {
+		options = append(options, WithInterceptor(metricInterceptor(c.name, c.config)))
+	}
 	for _, option := range options {
 		option(c)
 	}
 	cmp := &Component{
 		config:    c.config,
 		logger:    c.logger,
-		client:    Connect(c.config, c.logger),
+		client:    Connect(c),
 		consumers: make(map[string]*Consumer),
 		producers: make(map[string]*Producer),
 		compName:  c.name,
