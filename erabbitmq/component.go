@@ -2,6 +2,7 @@ package erabbitmq
 
 import (
 	"github.com/soedev/soego/core/elog"
+	"github.com/streadway/amqp"
 	"sync"
 	"time"
 )
@@ -92,6 +93,11 @@ func (cmp *Component) InitConsumers(msgHandle AckHandle) {
 //根据消费者名 来发送消息
 func (cmp *Component) SendMessageByName(name string, body []byte) {
 	cmp.Producer(name).SendMessage(body)
+}
+
+//自定义发送接口
+func (cmp *Component) PublishingByName(name string, publishing amqp.Publishing) {
+	cmp.Producer(name).Publishing(publishing)
 }
 
 func (cmp *Component) Close() {

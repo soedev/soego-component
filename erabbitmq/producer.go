@@ -87,25 +87,31 @@ func (p *Producer) initProducer() error {
 	return nil
 }
 
+//默认发送接口
 func (p *Producer) SendMessage(body []byte) error {
+	return p.Publishing(defaultPublishing(body))
+}
+
+//自定义发送接口
+func (p *Producer) Publishing(publishing amqp.Publishing) error {
 	if p.config.Type == producerTypeQueue {
 		return p.ch.Publish("", p.q.Name, false, false,
-			amqp.Publishing{
-				DeliveryMode: amqp.Persistent, //将消息标记为持久性 - 通过设置amqp.Publishing的amqp.Persistent
-				ContentType:  "text/plain",
-				Body:         body,
-			})
+			publishing)
 	} else {
 		return p.ch.Publish(p.config.Exchange.Name, p.config.RoutingKey, false, false,
-			amqp.Publishing{
-				DeliveryMode: amqp.Persistent,
-				ContentType:  "text/plain",
-				Body:         body,
-			})
+			publishing)
 	}
 }
 
 func (p *Producer) Close() error {
 	return p.ch.Close()
 	return nil
+}
+
+func defaultPublishing(body []byte) amqp.Publishing {
+	return amqp.Publishing{
+		DeliveryMode: amqp.Persistent,
+		ContentType:  "text/plain",
+		Body:         body,
+	}
 }
