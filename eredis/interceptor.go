@@ -205,8 +205,7 @@ func accessInterceptor(compName string, config *config, logger *elog.Component) 
 func traceInterceptor(compName string, config *config, logger *elog.Component) *interceptor {
 	tracer := etrace.NewTracer(trace.SpanKindClient)
 	return newInterceptor(compName, config, logger).setBeforeProcess(func(ctx context.Context, cmd redis.Cmder) (context.Context, error) {
-		ctx, span := tracer.Start(ctx, cmd.FullName(), nil)
-
+		ctx, span := tracer.Start(ctx, "redis:"+cmd.FullName(), nil)
 		span.SetAttributes(
 			etrace.String("peer.service", "redis"),
 			etrace.String("db.system", "redis"),

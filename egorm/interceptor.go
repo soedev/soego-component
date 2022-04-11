@@ -147,8 +147,8 @@ func traceInterceptor(compName string, dsn *manager.DSN, op string, options *con
 				next(db)
 
 				span.SetAttributes(
-					etrace.String("peer.service", "mysql"),
-					etrace.String("db.system", "mysql"),
+					etrace.String("peer.service", db.Dialector.Name()),
+					etrace.String("db.system", db.Dialector.Name()),
 					etrace.String("db.name", dsn.DBName),
 					etrace.String("db.statement", logSQL(db.Statement.SQL.String(), db.Statement.Vars, options.EnableDetailSQL)),
 					etrace.String("db.operation", operation),
