@@ -4,5 +4,5 @@ go 1.16
 
 require (
 	github.com/google/uuid v1.2.0
-	github.com/soedev/soego v0.0.1
+	github.com/soedev/soego v0.1.0
 )

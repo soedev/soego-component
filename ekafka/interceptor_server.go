@@ -16,7 +16,9 @@ import (
 	"github.com/soedev/soego/core/transport"
 	"github.com/soedev/soego/core/util/xdebug"
 	"github.com/soedev/soego/core/util/xstring"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
+	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -66,6 +68,9 @@ func traceServerInterceptor(compName string, c *config) ServerInterceptor {
 
 func accessServerInterceptor(compName string, c *config, logger *elog.Component) ServerInterceptor {
 	tracer := etrace.NewTracer(trace.SpanKindConsumer)
+	attrs := []attribute.KeyValue{
+		semconv.MessagingSystemKey.String("kafka"),
+	}
 	return func(next serverProcessFn) serverProcessFn {
 		return func(ctx context.Context, msgs Messages, cmd *cmd) error {
 			err := next(ctx, msgs, cmd)
@@ -88,12 +93,11 @@ func accessServerInterceptor(compName string, c *config, logger *elog.Component)
 				var (
 					span trace.Span
 				)
-				ctx, span = tracer.Start(ctx, "kafka", carrier)
+				ctx, span = tracer.Start(ctx, "kafka", carrier, trace.WithAttributes(attrs...))
 				defer span.End()
 
 				span.SetAttributes(
-					etrace.String("messaging.system", "kafka"),
-					etrace.String("messaging.destination", cmd.msg.Topic),
+					semconv.MessagingDestinationKindKey.String(cmd.msg.Topic),
 				)
 			}
 
