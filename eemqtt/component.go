@@ -2,7 +2,6 @@ package eemqtt
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
@@ -46,7 +45,7 @@ func newComponent(name string, config *config, logger *elog.Component) *Componen
 /**
   建立连接，自动订阅以及消息回调
 */
-func (c *Component) StartAndHandler(handler OnPublishHandler) {
+func (c *Component) Start(handler OnPublishHandler) {
 	c.rmu.RLock()
 	if c.mod == 0 {
 		c.onPublishHandler = handler
@@ -156,7 +155,7 @@ func (c *Component) Client() *autopaho.ConnectionManager {
 	return c.ec
 }
 
-func (c *Component) PublishMsg(topic string, qos byte, msg interface{}) {
+func (c *Component) PublishMsg(topic string, qos byte, payload interface{}) {
 	c.rmu.RLock()
 	if c.mod == 0 {
 		c.rmu.RUnlock()
@@ -170,11 +169,17 @@ func (c *Component) PublishMsg(topic string, qos byte, msg interface{}) {
 		return
 	}
 
-	msgByte, err := json.Marshal(msg)
-	if err != nil {
-		c.logger.Panic("msg Parse error", elog.FieldErr(err), elog.FieldValueAny(msg))
+	var msgByte []byte
+	switch payload.(type) {
+	case string:
+		msgByte = []byte(payload.(string))
+	case []byte:
+		msgByte = payload.([]byte)
+	default:
+		c.logger.Error("Unknown payload type")
 		return
 	}
+
 	go func(msg []byte) {
 		pr, err := c.ec.Publish(c.ServerCtx, &paho.Publish{
 			QoS:     qos,
