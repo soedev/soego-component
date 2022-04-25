@@ -2,12 +2,12 @@ package etoken
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-redis/redis/v8"
+	"github.com/google/uuid"
 	"github.com/soedev/soego/core/elog"
 )
 
@@ -32,58 +32,63 @@ type AccessTokenTicket struct {
 	ExpiresIn   int64  `json:"expiresIn"`
 }
 
-func (c *Component) CreateAccessToken(uid int, startTime int64) (resp AccessTokenTicket, err error) {
-	// using the uid as the jwtId
-	tokenString, err := c.EncodeAccessToken(uid, uid, startTime)
+func (c *Component) CreateAccessToken(ctx context.Context, uid int, startTime int64) (resp AccessTokenTicket, err error) {
+	tokenString, err := c.EncodeAccessToken(uuid.New().String(), uid, startTime)
 	if err != nil {
+		err = fmt.Errorf("CreateAccessToken EncodeAccessToken failed, err: %w", err)
 		return
 	}
 
-	err = c.client.Set(context.Background(), fmt.Sprintf(c.config.TokenPrefix+tokenKeyPattern, uid), tokenString,
-		time.Duration(c.config.AccessTokenExpireInterval)*time.Second).Err()
+	err = c.client.Set(ctx, fmt.Sprintf(c.config.Prefix+tokenKeyPattern, uid), tokenString,
+		time.Duration(c.config.ExpireInterval)*time.Second).Err()
 	if err != nil {
-		return AccessTokenTicket{}, fmt.Errorf("set token error %v", err)
+		return AccessTokenTicket{}, fmt.Errorf("CreateAccessToken Set Token  failed, err: %w", err)
 	}
 	resp.AccessToken = tokenString
-	resp.ExpiresIn = c.config.AccessTokenExpireInterval
+	resp.ExpiresIn = c.config.ExpireInterval
 	return
 }
 
-func (c *Component) CheckAccessToken(tokenStr string) bool {
+func (c *Component) CheckAccessToken(ctx context.Context, tokenStr string) (flag bool, err error) {
 	sc, err := c.DecodeAccessToken(tokenStr)
 	if err != nil {
-		return false
-	}
-	uid := sc["jti"].(float64)
-	uidInt := int(uid)
-	err = c.client.Get(context.Background(), fmt.Sprintf(c.config.TokenPrefix+tokenKeyPattern, uidInt)).Err()
-	if err != nil {
-		return false
-	}
-	return true
-}
-
-func (c *Component) RefreshAccessToken(tokenStr string, startTime int64) (resp AccessTokenTicket, err error) {
-	sc, err := c.DecodeAccessToken(tokenStr)
-	if err != nil {
+		err = fmt.Errorf("CheckAccessToken failed, err: %w", err)
 		return
 	}
 	uid := sc["jti"].(float64)
 	uidInt := int(uid)
-	return c.CreateAccessToken(uidInt, startTime)
+	err = c.client.Get(ctx, fmt.Sprintf(c.config.Prefix+tokenKeyPattern, uidInt)).Err()
+	if err != nil {
+		err = fmt.Errorf("CheckAccessToken failed2, err: %w", err)
+		return
+	}
+	flag = true
+	return
 }
 
-func (c *Component) EncodeAccessToken(jwtId int, uid int, startTime int64) (tokenStr string, err error) {
+func (c *Component) RefreshAccessToken(ctx context.Context, tokenStr string, startTime int64) (resp AccessTokenTicket, err error) {
+	sc, err := c.DecodeAccessToken(tokenStr)
+	if err != nil {
+		err = fmt.Errorf("RefreshAccessToken failed, err: %w", err)
+		return
+	}
+	uid := sc["jti"].(float64)
+	uidInt := int(uid)
+	return c.CreateAccessToken(ctx, uidInt, startTime)
+}
+
+func (c *Component) EncodeAccessToken(jwtId string, uid int, startTime int64) (tokenStr string, err error) {
 	jwtToken := jwt.New(jwt.SigningMethodHS256)
 	claims := make(jwt.MapClaims)
-	claims["jti"] = jwtId
-	claims["iss"] = c.config.AccessTokenIss
-	claims["sub"] = uid
-	claims["iat"] = startTime
-	claims["exp"] = startTime + c.config.AccessTokenExpireInterval
+	claims["jti"] = jwtId                               // jwt的唯一身份标识，防止重放
+	claims["iss"] = c.config.Iss                        // JWT的签发者
+	claims["sub"] = uid                                 // JWT的主题
+	claims["iat"] = startTime                           // JWT的签发时间
+	claims["exp"] = startTime + c.config.ExpireInterval // JWT的过期时间
 	jwtToken.Claims = claims
-	tokenStr, err = jwtToken.SignedString([]byte(c.config.AccessTokenKey))
+	tokenStr, err = jwtToken.SignedString([]byte(c.config.Secret))
 	if err != nil {
+		err = fmt.Errorf("EncodeAccessToken failed, err: %w", err)
 		return
 	}
 	return
@@ -91,15 +96,16 @@ func (c *Component) EncodeAccessToken(jwtId int, uid int, startTime int64) (toke
 
 func (c *Component) DecodeAccessToken(tokenStr string) (resp map[string]interface{}, err error) {
 	tokenParse, err := jwt.Parse(tokenStr, func(jwtToken *jwt.Token) (interface{}, error) {
-		return []byte(c.config.AccessTokenKey), nil
+		return []byte(c.config.Secret), nil
 	})
 	if err != nil {
+		err = fmt.Errorf("DecodeAccessToken failed, err: %w", err)
 		return
 	}
 	var flag bool
 	resp, flag = tokenParse.Claims.(jwt.MapClaims)
 	if !flag {
-		err = errors.New("assert error")
+		err = fmt.Errorf("DecodeAccessToken failed2, err: assert error")
 		return
 	}
 	return

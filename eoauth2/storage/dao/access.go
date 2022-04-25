@@ -1,58 +1,54 @@
 package dao
 
 import (
-	"context"
 	"fmt"
 	"time"
 
-	"github.com/soedev/soego-component/egorm"
 	"gorm.io/gorm"
 )
 
 type Access struct {
-	Id           int    `gorm:"not null;primary_key;AUTO_INCREMENT" json:"id" form:"id"` // FormID
-	Client       string `gorm:"not null" json:"client" form:"client"`                    // client
-	Authorize    string `gorm:"not null" json:"authorize" form:"authorize"`              // authorize
-	Previous     string `gorm:"not null" json:"previous" form:"previous"`                // previous
-	AccessToken  string `gorm:"not null" json:"accessToken" form:"accessToken"`          // access_token
-	RefreshToken string `gorm:"not null" json:"refreshToken" form:"refreshToken"`        // refresh_token
-	ExpiresIn    int    `gorm:"not null" json:"expiresIn" form:"expiresIn"`              // expires_in
-	Scope        string `gorm:"not null" json:"scope" form:"scope"`                      // scope
-	RedirectUri  string `gorm:"not null" json:"redirectUri" form:"redirectUri"`          // redirect_uri
-	Extra        string `gorm:"not null;type:longtext" json:"extra" form:"extra"`        // extra
-	Ctime        int64  `gorm:"not null" json:"ctime" form:"ctime"`                      // 创建时间
+	Id           int    `gorm:"not null;primary_key;AUTO_INCREMENT" json:"id"`       // FormID
+	Client       string `gorm:"not null;default:'';comment:客户端" json:"client"`       // client
+	Authorize    string `gorm:"not null;default:'';comment:授权" json:"authorize"`     // authorize
+	Previous     string `gorm:"not null;default:'';" json:"previous"`                // previous
+	AccessToken  string `gorm:"not null;default:'';" json:"accessToken"`             // access_token
+	RefreshToken string `gorm:"not null;default:'';" json:"refreshToken"`            // refresh_token
+	ExpiresIn    int64  `gorm:"not null;default:0;comment:过期时间" json:"expiresIn"`    // expires_in
+	Scope        string `gorm:"not null;default:'';comment:作用域" json:"scope"`        // scope
+	RedirectUri  string `gorm:"not null;default:'';comment:跳转地址" json:"redirectUri"` // redirect_uri
+	Extra        string `gorm:"not null;type:longtext;comment:额外信息" json:"extra"`    // extra
+	Ctime        int64  `gorm:"not null;default:0;comment:创建时间" json:"ctime"`        // 创建时间
 }
 
 func (t *Access) TableName() string {
 	return "access"
 }
 
-// AccessCreate insert a new Access into database and returns
+// CreateAccess insert a new Access into database and returns
 // last inserted Id on success.
-func AccessCreate(ctx context.Context, db *gorm.DB, data *Access) (err error) {
+func CreateAccess(db *gorm.DB, data *Access) (err error) {
 	data.Ctime = time.Now().Unix()
-	if err = db.WithContext(ctx).Create(data).Error; err != nil {
-		err = fmt.Errorf("AccessCreate, err: %w", err)
+	if err = db.Create(data).Error; err != nil {
+		err = fmt.Errorf("CreateAccess, err: %w", err)
 		return
 	}
 	return
 }
 
-// AccessDeleteX Delete的扩展方法，根据Cond删除一条或多条记录。如果有delete_time则软删除，否则硬删除。
-func AccessDeleteX(ctx context.Context, db *gorm.DB, conds egorm.Conds) (err error) {
-	sql, binds := egorm.BuildQuery(conds)
-	if err = db.WithContext(ctx).Table("access").Where(sql, binds...).Delete(&Access{}).Error; err != nil {
-		err = fmt.Errorf("AccessDeleteX, err: %w", err)
+// DeleteAccessByAccessToken Delete的扩展方法，根据Cond删除一条或多条记录。如果有delete_time则软删除，否则硬删除。
+func DeleteAccessByAccessToken(db *gorm.DB, accessToken string) (err error) {
+	if err = db.Where("access_token = ?", accessToken).Delete(&Access{}).Error; err != nil {
+		err = fmt.Errorf("DeleteAccessByAccessToken, err: %w", err)
 		return
 	}
 	return
 }
 
-// AccessInfoX Info的扩展方法，根据Cond查询单条记录
-func AccessInfoX(ctx context.Context, db *gorm.DB, conds egorm.Conds) (resp Access, err error) {
-	sql, binds := egorm.BuildQuery(conds)
-	if err = db.WithContext(ctx).Table("access").Where(sql, binds...).First(&resp).Error; err != nil {
-		err = fmt.Errorf("AccessInfoX, err: %w", err)
+// GetAccessByAccessToken Info的扩展方法，根据Cond查询单条记录
+func GetAccessByAccessToken(db *gorm.DB, accessToken string) (resp Access, err error) {
+	if err = db.Where("access_token = ?", accessToken).First(&resp).Error; err != nil {
+		err = fmt.Errorf("GetAccessByAccessToken, err: %w", err)
 		return
 	}
 	return

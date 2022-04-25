@@ -9,21 +9,18 @@ import (
 	"github.com/soedev/soego-component/egorm"
 	"github.com/soedev/soego-component/eoauth2/server"
 	"github.com/soedev/soego-component/eoauth2/storage/dao"
-	"github.com/soedev/soego/core/elog"
 	"github.com/spf13/cast"
 	"gorm.io/gorm"
 )
 
 type storage struct {
-	db     *egorm.Component
-	logger *elog.Component
+	db *egorm.Component
 }
 
 // NewStorage returns a new mysql storage instance.
-func NewStorage(db *gorm.DB, logger *elog.Component) *storage {
+func NewStorage(db *gorm.DB) *storage {
 	return &storage{
 		db,
-		logger,
 	}
 }
 
@@ -41,7 +38,7 @@ func (s *storage) Close() {
 
 // GetClient loads the client by id
 func (s *storage) GetClient(ctx context.Context, clientId string) (client server.Client, err error) {
-	app, err := dao.AppInfoX(ctx, s.db, egorm.Conds{"client_id": clientId})
+	app, err := dao.GetAppInfoByClientId(s.db.WithContext(ctx), clientId)
 	if err != nil {
 		err = fmt.Errorf("mysql storage get client error,err: %w", err)
 		return
@@ -68,14 +65,14 @@ func (s *storage) SaveAuthorize(ctx context.Context, data *server.AuthorizeData)
 		Extra:       cast.ToString(data.UserData),
 	}
 
-	tx := s.db.Begin()
-	err = dao.AuthorizeCreate(ctx, tx, &obj)
+	tx := s.db.WithContext(ctx).Begin()
+	err = dao.CreateAuthorize(tx, &obj)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
-	err = s.AddExpireAtData(ctx, tx, data.Code, data.ExpireAt())
+	err = s.AddExpireAtData(tx, data.Code, data.ExpireAt())
 	if err != nil {
 		tx.Rollback()
 		return
@@ -90,7 +87,7 @@ func (s *storage) SaveAuthorize(ctx context.Context, data *server.AuthorizeData)
 func (s *storage) LoadAuthorize(ctx context.Context, code string) (*server.AuthorizeData, error) {
 	var data server.AuthorizeData
 
-	info, err := dao.AuthorizeInfoX(ctx, s.db, egorm.Conds{"code": code})
+	info, err := dao.GetAuthorizeInfoByCode(s.db.WithContext(ctx), code)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +107,7 @@ func (s *storage) LoadAuthorize(ctx context.Context, code string) (*server.Autho
 	}
 
 	if data.ExpireAt().Before(time.Now()) {
-		return nil, fmt.Errorf("Token expired at %s.", data.ExpireAt().String())
+		return nil, fmt.Errorf("ParentToken expired at %s.", data.ExpireAt().String())
 	}
 
 	data.Client = c
@@ -119,7 +116,7 @@ func (s *storage) LoadAuthorize(ctx context.Context, code string) (*server.Autho
 
 // RemoveAuthorize revokes or deletes the authorization code.
 func (s *storage) RemoveAuthorize(ctx context.Context, code string) (err error) {
-	err = dao.AuthorizeDeleteX(ctx, s.db, egorm.Conds{"code": code})
+	err = dao.DeleteAuthorizeByCode(s.db.WithContext(ctx), code)
 	if err != nil {
 		return
 	}
@@ -146,10 +143,10 @@ func (s *storage) SaveAccess(ctx context.Context, data *server.AccessData) (err 
 
 	extra := cast.ToString(data.UserData)
 
-	tx := s.db.Begin()
+	tx := s.db.WithContext(ctx).Begin()
 
 	if data.RefreshToken != "" {
-		if err := s.saveRefresh(ctx, tx, data.RefreshToken, data.AccessToken); err != nil {
+		if err := s.saveRefresh(tx, data.RefreshToken, data.AccessToken); err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -165,35 +162,33 @@ func (s *storage) SaveAccess(ctx context.Context, data *server.AccessData) (err 
 		Previous:     prev,
 		AccessToken:  data.AccessToken,
 		RefreshToken: data.RefreshToken,
-		ExpiresIn:    int(data.ExpiresIn),
+		ExpiresIn:    data.TokenExpiresIn,
 		Scope:        data.Scope,
 		RedirectUri:  data.RedirectUri,
 		Ctime:        data.CreatedAt.Unix(),
 		Extra:        extra,
 	}
 
-	err = dao.AccessCreate(ctx, tx, &obj)
+	err = dao.CreateAccess(tx, &obj)
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
 
-	_, err = dao.AppInfoX(ctx, tx, egorm.Conds{
-		"client_id": data.Client.GetId(),
-	})
+	_, err = dao.GetAppInfoByClientId(tx, data.Client.GetId())
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
-	err = tx.WithContext(ctx).Model(dao.App{}).Where("client_id = ?", data.Client.GetId()).Updates(egorm.Ups{
+	err = tx.WithContext(ctx).Model(dao.App{}).Where("client_id = ?", data.Client.GetId()).Updates(map[string]interface{}{
 		"call_no": gorm.Expr("call_no+?", 1),
 	}).Error
 	if err != nil {
 		tx.Rollback()
 		return
 	}
-	err = s.AddExpireAtData(ctx, tx, data.AccessToken, data.ExpireAt())
+	err = s.AddExpireAtData(tx, data.AccessToken, data.ExpireAt())
 	if err != nil {
 		tx.Rollback()
 		return
@@ -208,14 +203,14 @@ func (s *storage) SaveAccess(ctx context.Context, data *server.AccessData) (err 
 func (s *storage) LoadAccess(ctx context.Context, code string) (*server.AccessData, error) {
 	var result server.AccessData
 
-	info, err := dao.AccessInfoX(ctx, s.db, egorm.Conds{"access_token": code})
+	info, err := dao.GetAccessByAccessToken(s.db.WithContext(ctx), code)
 	if err != nil {
 		return nil, err
 	}
 
 	result.AccessToken = info.AccessToken
 	result.RefreshToken = info.RefreshToken
-	result.ExpiresIn = int32(info.ExpiresIn)
+	result.TokenExpiresIn = info.ExpiresIn
 	result.Scope = info.Scope
 	result.RedirectUri = info.RedirectUri
 	result.CreatedAt = time.Unix(info.Ctime, 0)
@@ -234,7 +229,7 @@ func (s *storage) LoadAccess(ctx context.Context, code string) (*server.AccessDa
 
 // RemoveAccess revokes or deletes an AccessData.
 func (s *storage) RemoveAccess(ctx context.Context, code string) (err error) {
-	err = dao.AccessDeleteX(ctx, s.db, egorm.Conds{"access_token": code})
+	err = dao.DeleteAccessByAccessToken(s.db.WithContext(ctx), code)
 	if err != nil {
 		return
 	}
@@ -246,7 +241,7 @@ func (s *storage) RemoveAccess(ctx context.Context, code string) (err error) {
 // AuthorizeData and AccessData DON'T NEED to be loaded if not easily available.
 // Optionally can return error if expired.
 func (s *storage) LoadRefresh(ctx context.Context, code string) (*server.AccessData, error) {
-	info, err := dao.RefreshInfoX(ctx, s.db, egorm.Conds{"token": code})
+	info, err := dao.GetRefreshInfoByToken(s.db.WithContext(ctx), code)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +250,7 @@ func (s *storage) LoadRefresh(ctx context.Context, code string) (*server.AccessD
 
 // RemoveRefresh revokes or deletes refresh AccessData.
 func (s *storage) RemoveRefresh(ctx context.Context, code string) (err error) {
-	err = dao.RefreshDeleteX(ctx, s.db, egorm.Conds{"token": code})
+	err = dao.DeleteRefreshByToken(s.db.WithContext(ctx), code)
 	return
 }
 
@@ -269,28 +264,28 @@ func (s *storage) CreateClientWithInformation(id string, secret string, redirect
 	}
 }
 
-func (s *storage) saveRefresh(ctx context.Context, tx *gorm.DB, refresh, access string) (err error) {
+func (s *storage) saveRefresh(tx *gorm.DB, refresh, access string) (err error) {
 	obj := dao.Refresh{
 		Token:  refresh,
 		Access: access,
 	}
 
-	err = dao.RefreshCreate(ctx, tx, &obj)
+	err = dao.CreateRefreash(tx, &obj)
 	return
 }
 
 // AddExpireAtData add info in expires table
-func (s *storage) AddExpireAtData(ctx context.Context, tx *gorm.DB, code string, expireAt time.Time) (err error) {
+func (s *storage) AddExpireAtData(tx *gorm.DB, code string, expireAt time.Time) (err error) {
 	obj := dao.Expires{
 		Token:     code,
 		ExpiresAt: expireAt.Unix(),
 	}
-	err = dao.ExpiresCreate(ctx, tx, &obj)
+	err = dao.CreateExpires(tx, &obj)
 	return
 }
 
 // removeExpireAtData remove info in expires table
 func (s *storage) removeExpireAtData(ctx context.Context, code string) (err error) {
-	err = dao.ExpiresDeleteX(ctx, s.db, egorm.Conds{"token": code})
+	err = dao.DeleteExpiresByToken(s.db.WithContext(ctx), code)
 	return
 }
