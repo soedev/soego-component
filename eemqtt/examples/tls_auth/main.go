@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/soedev/soego"
@@ -21,6 +22,7 @@ func main() {
 	err := soego.New().Invoker(
 		initEQ,
 		pub,
+		usub,
 	).Run()
 	if err != nil {
 		elog.Error("startup", elog.Any("err", err))
@@ -31,10 +33,16 @@ func main() {
 	<-sig
 }
 
+func usub() error {
+	time.Sleep(time.Second * 10)
+	emqClient.Unsubscribe([]string{"topic1"})
+	return nil
+}
+
 //初始化emqtt
 func initEQ() error {
 	emqClient = eemqtt.Load("emqtt").Build()
-	emqClient.StartAndHandler(msgHandler)
+	emqClient.Start(msgHandler)
 	return nil
 }
 
@@ -52,7 +60,8 @@ func pub() error {
 				go func(message struct {
 					Count uint64
 				}) {
-					emqClient.PublishMsg("topic1", 1, message)
+					bytes, _ := json.Marshal(message)
+					emqClient.PublishMsg("topic1", 1, bytes)
 				}(struct {
 					Count uint64
 				}{Count: count})
@@ -69,7 +78,3 @@ func pub() error {
 func msgHandler(ctx context.Context, pp *paho.Publish) {
 	elog.Info("receive meg", elog.Any("topic", pp.Topic), elog.Any("msg", string(pp.Payload)))
 }
-
-//1.完善docker测试
-//2.编写收发代码
-//3.提交 pr

@@ -2,11 +2,14 @@ package eemqtt
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/soedev/soego/core/elog"
 	"github.com/soedev/soego/core/emetric"
+	"io/ioutil"
 	"net/url"
 	"sync"
 	"time"
@@ -21,6 +24,7 @@ type Component struct {
 	name             string
 	mod              int //0-初始化  1 运行中
 	config           *config
+	Brokers          string
 	rmu              *sync.RWMutex
 	logger           *elog.Component
 	ec               *autopaho.ConnectionManager
@@ -42,9 +46,7 @@ func newComponent(name string, config *config, logger *elog.Component) *Componen
 	return cc
 }
 
-/**
-  建立连接，自动订阅以及消息回调
-*/
+//Start 建立连接，自动订阅以及消息回调
 func (c *Component) Start(handler OnPublishHandler) {
 	c.rmu.RLock()
 	if c.mod == 0 {
@@ -58,15 +60,13 @@ func (c *Component) Start(handler OnPublishHandler) {
 }
 
 func (c *Component) connServer() {
-	if c.config.ServerURL == "" {
-		c.logger.Panic("client emqtt serverUrl empty", elog.FieldValueAny(c.config))
+	urls, brokers := parseUrl(c.config.Brokers)
+	if len(urls) == 0 {
+		c.logger.Panic("client emqtt brokers empty / error", elog.FieldValueAny(c.config))
 	}
-	urlParseStr, err := url.Parse(c.config.ServerURL)
-	if err != nil {
-		c.logger.Panic("client emqtt serverUrl Parse error", elog.FieldErr(err), elog.FieldValueAny(c.config))
-	}
+	c.Brokers = brokers
 	cliCfg := autopaho.ClientConfig{
-		BrokerUrls:        []*url.URL{urlParseStr},
+		BrokerUrls:        urls,
 		KeepAlive:         c.config.KeepAlive,
 		ConnectRetryDelay: c.config.ConnectRetryDelay,
 		ConnectTimeout:    c.config.ConnectTimeout,
@@ -86,13 +86,13 @@ func (c *Component) connServer() {
 				}
 			}
 			if c.config.EnableMetricInterceptor {
-				emetric.ClientHandleCounter.Inc("emqtt", c.name, "Connect", c.config.ServerURL, "OK")
+				emetric.ClientHandleCounter.Inc("emqtt", c.name, "Connect", c.Brokers, "OK")
 				if len(sOs) > 0 {
 					for so := range sOs {
 						if err != nil {
-							emetric.ClientHandleCounter.Inc("emqtt", c.name, "subscribe_"+so, c.config.ServerURL, "Error")
+							emetric.ClientHandleCounter.Inc("emqtt", c.name, "subscribe_"+so, c.Brokers, "Error")
 						} else {
-							emetric.ClientHandleCounter.Inc("emqtt", c.name, "subscribe_"+so, c.config.ServerURL, "OK")
+							emetric.ClientHandleCounter.Inc("emqtt", c.name, "subscribe_"+so, c.Brokers, "OK")
 						}
 
 					}
@@ -102,7 +102,7 @@ func (c *Component) connServer() {
 		OnConnectError: func(err error) {
 			c.logger.Error("error whilst attempting connection", elog.FieldErr(err))
 			if c.config.EnableMetricInterceptor {
-				emetric.ClientHandleCounter.Inc("emqtt", c.name, "Connect", c.config.ServerURL, "Error")
+				emetric.ClientHandleCounter.Inc("emqtt", c.name, "Connect", c.Brokers, "Error")
 			}
 		},
 		ClientConfig: paho.ClientConfig{
@@ -111,23 +111,23 @@ func (c *Component) connServer() {
 				if c.onPublishHandler != nil {
 					c.onPublishHandler(c.ServerCtx, pp)
 				} else {
-					c.logger.Info("Received message, but no handler is defined")
+					c.logger.Warn("Received message, but no handler is defined")
 				}
 			}),
 			OnClientError: func(err error) {
 				c.logger.Error("server requested disconnect", elog.FieldErr(err))
 				if c.config.EnableMetricInterceptor {
-					emetric.ClientHandleCounter.Inc("emqtt", c.name, "Connect", c.config.ServerURL, "Error")
+					emetric.ClientHandleCounter.Inc("emqtt", c.name, "Connect", c.Brokers, "Error")
 				}
 			},
 			OnServerDisconnect: func(d *paho.Disconnect) {
 				if d.Properties != nil {
-					c.logger.Info(fmt.Sprintf("server requested disconnect: %s\n", d.Properties.ReasonString))
+					c.logger.Warn(fmt.Sprintf("server requested disconnect: %s\n", d.Properties.ReasonString))
 				} else {
-					c.logger.Info(fmt.Sprintf("server requested disconnect; reason code: %d\n", d.ReasonCode))
+					c.logger.Warn(fmt.Sprintf("server requested disconnect; reason code: %d\n", d.ReasonCode))
 				}
 				if c.config.EnableMetricInterceptor {
-					emetric.ClientHandleCounter.Inc("emqtt", c.name, "Connect", c.config.ServerURL, "Error")
+					emetric.ClientHandleCounter.Inc("emqtt", c.name, "Connect", c.Brokers, "Error")
 				}
 			},
 		},
@@ -141,6 +141,27 @@ func (c *Component) connServer() {
 	if c.config.Username != "" && c.config.Password != "" {
 		cliCfg.SetUsernamePassword(c.config.Username, ([]byte)(c.config.Password))
 	}
+
+	if c.config.EnableTLS {
+		if c.config.customizeTlsConfig != nil {
+			cliCfg.TlsCfg = c.config.customizeTlsConfig
+		} else {
+			tslConfig, errTLS := c.buildTLSConfig()
+			if errTLS != nil {
+				c.logger.Panic("build TLSConfig fialed", elog.FieldValueAny(c.config))
+			}
+			cliCfg.TlsCfg = tslConfig
+		}
+	}
+
+	if c.config.enableWillMessage {
+		cliCfg.SetWillMessage(c.config.willTopic, c.config.willPayload, c.config.willQos, c.config.willRetain)
+	}
+
+	if c.config.enableConnectPacket {
+		cliCfg.SetConnectPacketConfigurator(c.config.connectPacketBuilder)
+	}
+
 	cm, err := autopaho.NewConnection(c.ServerCtx, cliCfg)
 	if err != nil {
 		c.logger.Panic("emqtt connect fialed", elog.FieldValueAny(c.config))
@@ -151,8 +172,82 @@ func (c *Component) connServer() {
 		c.rmu.Unlock()
 	}
 }
+
+func (c *Component) buildTLSConfig() (*tls.Config, error) {
+	tlsConfig := &tls.Config{}
+	tlsConfig.RootCAs = x509.NewCertPool()
+	ca, err := ioutil.ReadFile(c.config.TLSClientCA)
+	if err != nil {
+		return nil, fmt.Errorf("read client ca fail:%+v", err)
+	}
+	if !tlsConfig.RootCAs.AppendCertsFromPEM(ca) {
+		return nil, fmt.Errorf("append client ca fail:%+v", err)
+	}
+	//设置了客户端证书
+	if c.config.TLSClientCertFile != "" && c.config.TLSClientKeyFile != "" {
+		clientCert, err := tls.LoadX509KeyPair(c.config.TLSClientCertFile, c.config.TLSClientKeyFile)
+		if err != nil {
+			return nil, err
+		}
+		tlsConfig.Certificates = []tls.Certificate{clientCert}
+	}
+	tlsConfig.ClientAuth = c.config.ClientAuthType()
+	tlsConfig.ClientSessionCache = c.config.TLSSessionCache
+	return tlsConfig, nil
+}
+
+func parseUrl(brokers []string) ([]*url.URL, string) {
+	var urls []*url.URL
+	resBrokers := ""
+	for _, val := range brokers {
+		if url, err := url.Parse(val); err == nil {
+			urls = append(urls, url)
+			if resBrokers != "" {
+				resBrokers = resBrokers + ","
+			}
+			resBrokers = resBrokers + val
+		} else {
+			fmt.Printf("url %s parse error %s", val, err.Error())
+		}
+	}
+	return urls, resBrokers
+}
+
 func (c *Component) Client() *autopaho.ConnectionManager {
 	return c.ec
+}
+
+func (c *Component) Unsubscribe(topics []string) {
+	c.rmu.RLock()
+	if c.mod == 0 {
+		c.rmu.RUnlock()
+		c.logger.Error("client not start")
+		return
+	}
+
+	_, err := c.ec.Unsubscribe(c.ServerCtx, &paho.Unsubscribe{
+		Topics: topics,
+	})
+	if err != nil {
+		c.logger.Error(fmt.Sprintf("Unsubscribe error: %s\n", err))
+	}
+}
+
+func (c *Component) Subscribe(topics []subscribeTopic) {
+	sOs := make(map[string]paho.SubscribeOptions)
+	for _, st := range topics {
+		sOs[st.Topic] = paho.SubscribeOptions{QoS: st.Qos}
+	}
+	var err error
+	if len(sOs) > 0 {
+		if _, err = c.ec.Subscribe(context.Background(), &paho.Subscribe{
+			Subscriptions: sOs,
+		}); err != nil {
+			c.logger.Error(fmt.Sprintf("failed to subscribe (%v). This is likely to mean no messages will be received.", sOs), elog.FieldErr(err))
+		}
+	} else {
+		c.logger.Error("subscribe error topics is empty")
+	}
 }
 
 func (c *Component) PublishMsg(topic string, qos byte, payload interface{}) {
