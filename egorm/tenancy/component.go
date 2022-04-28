@@ -38,35 +38,32 @@ func (cmp *Tenancy) Get(ctx context.Context, tenancyKey string) (*egorm.Componen
 	//先重入锁
 	cmp.dbsMu.RLock()
 	if sqldb, ok := cmp.dbs[tenancyKey]; ok {
-		if db, err := sqldb.DB(); err == nil {
+		db, err := sqldb.DB()
+		if err == nil {
 			if err = db.Ping(); err == nil {
 				cmp.dbsMu.RUnlock()
 				return sqldb, nil
 			}
-		} else {
-			db.Close()
-			delete(cmp.dbs, tenancyKey)
-			cmp.logger.Warn("数据源已从连接池中移除!", elog.FieldCustomKeyValue("tenantId", tenancyKey), elog.FieldErr(err))
-			cmp.dbsMu.RUnlock()
 		}
+		_ = db.Close()
+		delete(cmp.dbs, tenancyKey)
+		cmp.logger.Warn("数据源已从连接池中移除!", elog.FieldCustomKeyValue("tenantId", tenancyKey), elog.FieldErr(err))
 	}
-
 	cmp.dbsMu.RUnlock()
 	//在用原始锁 跨进程锁
 	cmp.dbsMu.Lock()
 	if sqldb, ok := cmp.dbs[tenancyKey]; ok {
-		if db, err := sqldb.DB(); err == nil {
+		db, err := sqldb.DB()
+		if err == nil {
 			if err = db.Ping(); err == nil {
 				cmp.dbsMu.Unlock()
 				return sqldb, nil
 			}
-		} else {
-			db.Close()
-			delete(cmp.dbs, tenancyKey)
-			cmp.logger.Warn("数据源已从连接池中移除!", elog.FieldCustomKeyValue("tenantId", tenancyKey), elog.FieldErr(err))
 		}
+		_ = db.Close()
+		delete(cmp.dbs, tenancyKey)
+		cmp.logger.Warn("数据源已从连接池中移除!", elog.FieldCustomKeyValue("tenantId", tenancyKey), elog.FieldErr(err))
 	}
-
 	return cmp.getTenantDB(ctx, tenancyKey)
 }
 
