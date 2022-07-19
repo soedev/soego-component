@@ -375,6 +375,11 @@ func (r *Component) TTL(ctx context.Context, key string) (time.Duration, error) 
 	return r.client.TTL(ctx, key).Result()
 }
 
+// Do 支持原生 do 命令
+func (r *Component) Do(ctx context.Context, args ...interface{}) (interface{}, error) {
+	return r.Stub().Do(ctx, args).Result()
+}
+
 // Close closes the cluster client, releasing any open resources.
 //
 // It is rare to Close a ClusterClient, as the ClusterClient is meant
