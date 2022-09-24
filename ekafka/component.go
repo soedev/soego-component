@@ -73,20 +73,43 @@ func (cmp *Component) Producer(name string) *Producer {
 			cmp.config.balancers,
 		))
 	}
+
+	mechanism, err := NewMechanism(cmp.config.SASLMechanism, cmp.config.SASLUserName, cmp.config.SASLPassword)
+	if err != nil {
+		cmp.consumerMu.Unlock()
+		cmp.logger.Panic("create mechanism error", elog.String("mechanism", cmp.config.SASLMechanism), elog.String("errorDetail", err.Error()))
+	}
+
+	var transport kafka.RoundTripper
+	if mechanism != nil {
+		transport = &kafka.Transport{
+			SASL: mechanism,
+		}
+	}
+
+	kafkaWriter := &kafka.Writer{
+		Addr:         kafka.TCP(cmp.config.Brokers...),
+		Topic:        config.Topic,
+		Balancer:     balancer,
+		MaxAttempts:  config.MaxAttempts,
+		BatchSize:    config.BatchSize,
+		BatchBytes:   config.BatchBytes,
+		BatchTimeout: config.BatchTimeout,
+		ReadTimeout:  config.ReadTimeout,
+		WriteTimeout: config.WriteTimeout,
+		RequiredAcks: config.RequiredAcks,
+		Async:        config.Async,
+	}
+
+	if transport != nil {
+		kafkaWriter.Transport = transport
+	}
+	if config.Compression > 0 {
+		kafkaWriter.Compression = kafka.Compression(config.Compression)
+	}
+
 	producer := &Producer{
-		w: &kafka.Writer{
-			Addr:         kafka.TCP(cmp.config.Brokers...),
-			Topic:        config.Topic,
-			Balancer:     balancer,
-			MaxAttempts:  config.MaxAttempts,
-			BatchSize:    config.BatchSize,
-			BatchBytes:   config.BatchBytes,
-			BatchTimeout: config.BatchTimeout,
-			ReadTimeout:  config.ReadTimeout,
-			WriteTimeout: config.WriteTimeout,
-			RequiredAcks: config.RequiredAcks,
-			Async:        config.Async,
-		},
+		w:       kafkaWriter,
 		logMode: cmp.config.Debug,
 	}
 	producer.setProcessor(cmp.interceptorClientChain())
@@ -117,34 +140,50 @@ func (cmp *Component) Consumer(name string) *Consumer {
 	config, ok := cmp.config.Consumers[name]
 	if !ok {
 		cmp.consumerMu.Unlock()
-		cmp.logger.Panic("simple config not exists", elog.String("name", name))
+		cmp.logger.Panic("consumer config not exists", elog.String("name", name))
 	}
 	logger := newKafkaLogger(cmp.logger)
 	errorLogger := newKafkaErrorLogger(cmp.logger)
+	mechanism, err := NewMechanism(cmp.config.SASLMechanism, cmp.config.SASLUserName, cmp.config.SASLPassword)
+	if err != nil {
+		cmp.consumerMu.Unlock()
+		cmp.logger.Panic("create mechanism error", elog.String("mechanism", cmp.config.SASLMechanism), elog.String("errorDetail", err.Error()))
+	}
+
+	readerConfig := kafka.ReaderConfig{
+		Brokers:                cmp.config.Brokers,
+		Topic:                  config.Topic,
+		GroupID:                config.GroupID,
+		Partition:              config.Partition,
+		MinBytes:               config.MinBytes,
+		MaxBytes:               config.MaxBytes,
+		WatchPartitionChanges:  config.WatchPartitionChanges,
+		PartitionWatchInterval: config.PartitionWatchInterval,
+		RebalanceTimeout:       config.RebalanceTimeout,
+		MaxWait:                config.MaxWait,
+		ReadLagInterval:        config.ReadLagInterval,
+		Logger:                 logger,
+		ErrorLogger:            errorLogger,
+		HeartbeatInterval:      config.HeartbeatInterval,
+		CommitInterval:         config.CommitInterval,
+		SessionTimeout:         config.SessionTimeout,
+		JoinGroupBackoff:       config.JoinGroupBackoff,
+		RetentionTime:          config.RetentionTime,
+		StartOffset:            config.StartOffset,
+		ReadBackoffMin:         config.ReadBackoffMin,
+		ReadBackoffMax:         config.ReadBackoffMax,
+	}
+
+	if mechanism != nil {
+		dialer := &kafka.Dialer{
+			DualStack:     true,
+			SASLMechanism: mechanism,
+		}
+		readerConfig.Dialer = dialer
+	}
+
 	consumer := &Consumer{
-		r: kafka.NewReader(kafka.ReaderConfig{
-			Brokers:                cmp.config.Brokers,
-			Topic:                  config.Topic,
-			GroupID:                config.GroupID,
-			Partition:              config.Partition,
-			MinBytes:               config.MinBytes,
-			MaxBytes:               config.MaxBytes,
-			WatchPartitionChanges:  config.WatchPartitionChanges,
-			PartitionWatchInterval: config.PartitionWatchInterval,
-			RebalanceTimeout:       config.RebalanceTimeout,
-			MaxWait:                config.MaxWait,
-			ReadLagInterval:        config.ReadLagInterval,
-			Logger:                 logger,
-			ErrorLogger:            errorLogger,
-			HeartbeatInterval:      config.HeartbeatInterval,
-			CommitInterval:         config.CommitInterval,
-			SessionTimeout:         config.SessionTimeout,
-			JoinGroupBackoff:       config.JoinGroupBackoff,
-			RetentionTime:          config.RetentionTime,
-			StartOffset:            config.StartOffset,
-			ReadBackoffMin:         config.ReadBackoffMin,
-			ReadBackoffMax:         config.ReadBackoffMax,
-		}),
+		r: kafka.NewReader(readerConfig),
 		//processor: defaultProcessor,
 		logMode: cmp.config.Debug,
 		Config:  config,
@@ -194,6 +233,9 @@ func (cmp *Component) ConsumerGroup(name string) *ConsumerGroup {
 		JoinGroupBackoff:       config.JoinGroupBackoff,
 		StartOffset:            config.StartOffset,
 		RetentionTime:          config.RetentionTime,
+		SASLMechanism:          cmp.config.SASLMechanism,
+		SASLUserName:           cmp.config.SASLUserName,
+		SASLPassword:           cmp.config.SASLPassword,
 		Reader: readerOptions{
 			MinBytes:        config.MinBytes,
 			MaxBytes:        config.MaxBytes,
@@ -219,8 +261,18 @@ func (cmp *Component) ConsumerGroup(name string) *ConsumerGroup {
 // Client 返回kafka Client
 func (cmp *Component) Client() *Client {
 	cmp.clientOnce.Do(func() {
+		mechanism, err := NewMechanism(cmp.config.SASLMechanism, cmp.config.SASLUserName, cmp.config.SASLPassword)
+		if err != nil {
+			cmp.logger.Panic("create mechanism error", elog.String("mechanism", cmp.config.SASLMechanism), elog.String("errorDetail", err.Error()))
+		}
+		var transport kafka.RoundTripper
+		if mechanism != nil {
+			transport = &kafka.Transport{
+				SASL: mechanism,
+			}
+		}
 		cmp.client = &Client{
-			cc: &kafka.Client{Addr: kafka.TCP(cmp.config.Brokers...), Timeout: cmp.config.Client.Timeout},
+			cc: &kafka.Client{Addr: kafka.TCP(cmp.config.Brokers...), Timeout: cmp.config.Client.Timeout, Transport: transport},
 			//processor: defaultProcessor,
 			logMode: cmp.config.Debug,
 		}
