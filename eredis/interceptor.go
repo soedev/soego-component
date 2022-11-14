@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -117,11 +118,11 @@ func debugInterceptor(compName string, config *config, logger *elog.Component) *
 			err := cmd.Err()
 			if err != nil {
 				log.Println("[eredis.response]",
-					xdebug.MakeReqResError(compName, addr, cost, fmt.Sprintf("%v", cmd.Args()), err.Error()),
+					xdebug.MakeReqAndResError(fileWithLineNum(), compName, addr, cost, fmt.Sprintf("%v", cmd.Args()), err.Error()),
 				)
 			} else {
 				log.Println("[eredis.response]",
-					xdebug.MakeReqResInfo(compName, addr, cost, fmt.Sprintf("%v", cmd.Args()), response(cmd)),
+					xdebug.MakeReqAndResInfo(fileWithLineNum(), compName, addr, cost, fmt.Sprintf("%v", cmd.Args()), response(cmd)),
 				)
 			}
 			return err
@@ -215,7 +216,7 @@ func traceInterceptor(compName string, config *config, logger *elog.Component) *
 		semconv.DBNameKey.Int(config.DB),
 	}
 	return newInterceptor(compName, config, logger).setBeforeProcess(func(ctx context.Context, cmd redis.Cmder) (context.Context, error) {
-		ctx, span := tracer.Start(ctx, "redis:"+cmd.FullName(), nil, trace.WithAttributes(attrs...))
+		ctx, span := tracer.Start(ctx, cmd.FullName(), nil, trace.WithAttributes(attrs...))
 		span.SetAttributes(
 			semconv.DBOperationKey.String(cmd.Name()),
 			semconv.DBStatementKey.String(rediscmd.CmdString(cmd)),
@@ -266,13 +267,25 @@ func getContextValue(c context.Context, key string) string {
 	return cast.ToString(transport.Value(c, key))
 }
 
+// todo ipv6
 func peerInfo(addr string) (hostname string, port int) {
-	if idx := strings.IndexByte(addr, '['); idx >= 0 {
-		hostname = addr[:idx]
-	}
 	if idx := strings.IndexByte(addr, ':'); idx >= 0 {
-		port = func(p int, e error) int { return p }(strconv.Atoi(addr[idx+1:]))
 		hostname = addr[:idx]
+		port, _ = strconv.Atoi(addr[idx+1:])
 	}
 	return hostname, port
+}
+
+func fileWithLineNum() string {
+	// the second caller usually from internal, so set i start from 2
+	for i := 2; i < 15; i++ {
+		_, file, line, ok := runtime.Caller(i)
+		if !ok {
+			break
+		}
+		if (!(strings.Contains(file, "ego-component/eredis") && strings.HasSuffix(file, "interceptor.go")) && !(strings.Contains(file, "ego-component/eredis") && strings.HasSuffix(file, "comopnent_cmds.go")) && !strings.Contains(file, "go-redis/redis")) || strings.HasSuffix(file, "_test.go") {
+			return file + ":" + strconv.FormatInt(int64(line), 10)
+		}
+	}
+	return ""
 }
