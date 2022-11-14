@@ -1,13 +1,13 @@
 [emqtt]
 debug = true #启用框架自动调试日志
-brokers = ["tcp://emqtt.soe.xin:1883"]
+brokers = ["tcp://mqtt-z9.zhizhongbao.cn:1883"]
 username = "soe"
 password = "88951566"
-ClientID= "test-luc"
+ClientID= "z9test-luc"
 
 [emqtt.subscribeTopics.s1]
-topic = "topic1"
-qos = 1
+topic = "z9_8b070ac409c920da"
+qos = 0
 
 [emqtt.subscribeTopics.s2]
 topic = "topic2"

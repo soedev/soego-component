@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/segmentio/kafka-go"
 	"log"
 
-	"github.com/segmentio/kafka-go"
 	"github.com/soedev/soego"
 	"github.com/soedev/soego-component/ekafka"
 )

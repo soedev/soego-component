@@ -32,7 +32,7 @@ func initRedis() error {
 func cronJob() ecron.Ecron {
 	locker := ecronlock.DefaultContainer().Build(ecronlock.WithClient(redis))
 	cron := ecron.Load("cron.default").Build(
-		ecron.WithLock(locker.NewLock("ego-component:cronjob:syncXxx")),
+		ecron.WithLock(locker.NewLock("soedev/soego-component:cronjob:syncXxx")),
 		ecron.WithJob(helloWorld),
 	)
 	return cron

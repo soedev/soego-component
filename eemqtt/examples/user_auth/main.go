@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/eclipse/paho.golang/paho"
-	"github.com/soedev/soego"
-	"github.com/soedev/soego-component/eemqtt"
-	"github.com/soedev/soego/core/elog"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/eclipse/paho.golang/paho"
+	"github.com/soedev/soego"
+	"github.com/soedev/soego-component/eemqtt"
+	"github.com/soedev/soego/core/elog"
 )
 
 var emqClient *eemqtt.Component
@@ -54,7 +55,7 @@ func pub() error {
 					Count uint64
 				}) {
 					bytes, _ := json.Marshal(message)
-					emqClient.PublishMsg("topic1", 1, bytes)
+					emqClient.PublishMsg("z9_8b070ac409c920da", 1, bytes)
 				}(struct {
 					Count uint64
 				}{Count: count})
@@ -70,6 +71,7 @@ func pub() error {
 //接收的消息处理端
 func msgHandler(ctx context.Context, pp *paho.Publish) {
 	elog.Info("receive meg", elog.Any("topic", pp.Topic), elog.Any("msg", string(pp.Payload)))
+	fmt.Println(string(pp.Payload))
 }
 
 //1.完善docker测试

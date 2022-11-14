@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/soedev/soego"
 	"log"
 
 	"github.com/segmentio/kafka-go"
-	"github.com/soedev/soego"
 	"github.com/soedev/soego-component/ekafka"
 	"github.com/soedev/soego-component/ekafka/consumerserver"
 	"github.com/soedev/soego/core/elog"
@@ -29,7 +29,7 @@ func main() {
 
 		// 初始化 Consumer Server
 		func() *consumerserver.Component {
-			// 依赖 `ekafka` 管理 Kafka simple
+			// 依赖 `ekafka` 管理 Kafka consumer
 			ec = ekafka.Load("kafka").Build()
 			cs := consumerserver.Load("kafkaConsumerServers.s1").Build(
 				consumerserver.WithEkafka(ec),

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -141,11 +143,11 @@ func accessClientInterceptor(compName string, c *config, logger *elog.Component)
 				return err
 			}
 			if err != nil {
-				log.Println("[ekafka.response]", xdebug.MakeReqResError(compName,
+				log.Println("[ekafka.response]", xdebug.MakeReqAndResError(fileClientWithLineNum(), compName,
 					fmt.Sprintf("%v", c.Brokers), cost, fmt.Sprintf("%s %v", cmd.name, xstring.JSON(msgs.ToLog())), err.Error()),
 				)
 			} else {
-				log.Println("[ekafka.response]", xdebug.MakeReqResInfo(compName,
+				log.Println("[ekafka.response]", xdebug.MakeReqAndResInfo(fileClientWithLineNum(), compName,
 					fmt.Sprintf("%v", c.Brokers), cost, fmt.Sprintf("%s %v", cmd.name, xstring.JSON(msgs.ToLog())), fmt.Sprintf("%v", cmd.res)),
 				)
 			}
@@ -169,4 +171,18 @@ func metricClientInterceptor(compName string, config *config) ClientInterceptor 
 			return nil
 		}
 	}
+}
+
+func fileClientWithLineNum() string {
+	// the second caller usually from internal, so set i start from 2
+	for i := 2; i < 15; i++ {
+		_, file, line, ok := runtime.Caller(i)
+		if !ok {
+			break
+		}
+		if (!(strings.Contains(file, "ego-component/ekafka") && strings.HasSuffix(file, "interceptor_client.go")) && !strings.Contains(file, "/ego-component/ekafka/producer.go")) || strings.HasSuffix(file, "_test.go") {
+			return file + ":" + strconv.FormatInt(int64(line), 10)
+		}
+	}
+	return ""
 }

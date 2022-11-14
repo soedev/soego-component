@@ -2,10 +2,11 @@ package ekafka
 
 import (
 	"context"
+	"time"
+
 	"github.com/segmentio/kafka-go"
 	"github.com/soedev/soego/core/etrace"
 	"github.com/soedev/soego/core/transport"
-	"time"
 )
 
 // Consumer 消费者/消费者组，

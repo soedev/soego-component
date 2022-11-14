@@ -5,7 +5,7 @@
 
 ## 2 使用方式
 ```bash
-go get github.com/ego-component/etoken
+go get github.com/soedev/soego-component/etoken
 ```
 
 ## 3 配置

@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/soedev/soego"
 	"log"
 
-	"github.com/soedev/soego"
 	"github.com/soedev/soego-component/ekafka"
 	"github.com/soedev/soego/core/etrace"
 )

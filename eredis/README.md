@@ -13,7 +13,7 @@
 
 ## 2 使用方式
 ```bash
-go get github.com/ego-component/eredis
+go get github.com/soedev/soego-component/eredis
 ```
 
 ## 3 Redis配置
@@ -83,9 +83,9 @@ package main
 import (
     "fmt"
 
-    "github.com/gotomicro/ego"
-    "github.com/ego-component/eredis"
-    "github.com/gotomicro/ego/core/elog"
+    "github.com/soedev/soego"
+    "github.com/soedev/soego-component/eredis"
+    "github.com/soedev/soego/core/elog"
 )
 
 // export EGO_DEBUG=true && go run main.go --config=config.toml
@@ -207,7 +207,7 @@ func initRedis() error {
 func cronJob() ecron.Ecron {
 	locker := ecronlock.DefaultContainer().Build(ecronlock.WithClient(redis))
 	cron := ecron.Load("cron.default").Build(
-		ecron.WithLock(locker.NewLock("ego-component:cronjob:syncXxx")),
+		ecron.WithLock(locker.NewLock("soedev/soego-component:cronjob:syncXxx")),
 		ecron.WithJob(helloWorld),
 	)
 	return cron
