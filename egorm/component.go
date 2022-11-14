@@ -48,7 +48,14 @@ func WithContext(ctx context.Context, db *Component) *Component {
 
 // newComponent ...
 func newComponent(compName string, dsnParser manager.DSNParser, config *config, elogger *elog.Component) (*Component, error) {
-	db, err := gorm.Open(dsnParser.GetDialector(config.DSN), &gorm.Config{})
+	// gorm的配置
+	gormConfig := &gorm.Config{}
+	// 如果没有开启gorm的原生日志，那么就丢弃掉，避免过多的日志信息
+	if !config.RawDebug {
+		gormConfig.Logger = logger.Discard
+	}
+
+	db, err := gorm.Open(dsnParser.GetDialector(config.DSN), gormConfig)
 	if err != nil {
 		return nil, err
 	}

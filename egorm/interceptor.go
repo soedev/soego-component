@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/soedev/soego-component/egorm/manager"
 	"github.com/soedev/soego/core/eapp"
 	"github.com/soedev/soego/core/elog"
 	"github.com/soedev/soego/core/emetric"
@@ -22,6 +22,8 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
+
+	"github.com/soedev/soego-component/egorm/manager"
 )
 
 // Handler ...
@@ -36,7 +38,7 @@ type Processor interface {
 // Interceptor ...
 type Interceptor func(string, *manager.DSN, string, *config, *elog.Component) func(next Handler) Handler
 
-func debugInterceptor(compName string, dsn *manager.DSN, op string, options *config, logger *elog.Component) func(Handler) Handler {
+func debugInterceptor(compName string, dsn *manager.DSN, _ string, _ *config, _ *elog.Component) func(Handler) Handler {
 	return func(next Handler) Handler {
 		return func(db *gorm.DB) {
 			if !eapp.IsDevelopmentMode() {
@@ -48,11 +50,11 @@ func debugInterceptor(compName string, dsn *manager.DSN, op string, options *con
 			cost := time.Since(beg)
 			if db.Error != nil {
 				log.Println("[egorm.response]",
-					xdebug.MakeReqResError(compName, fmt.Sprintf("%v", dsn.Addr+"/"+dsn.DBName), cost, logSQL(db, true), db.Error.Error()),
+					xdebug.MakeReqAndResError(fileWithLineNum(), compName, fmt.Sprintf("%v", dsn.Addr+"/"+dsn.DBName), cost, logSQL(db, true), db.Error.Error()),
 				)
 			} else {
 				log.Println("[egorm.response]",
-					xdebug.MakeReqResInfo(compName, fmt.Sprintf("%v", dsn.Addr+"/"+dsn.DBName), cost, logSQL(db, true), fmt.Sprintf("%v", db.Statement.Dest)),
+					xdebug.MakeReqAndResInfo(fileWithLineNum(), compName, fmt.Sprintf("%v", dsn.Addr+"/"+dsn.DBName), cost, logSQL(db, true), fmt.Sprintf("%v", db.Statement.Dest)),
 				)
 			}
 
@@ -133,13 +135,14 @@ func logSQL(db *gorm.DB, enableDetailSQL bool) string {
 	return db.Statement.SQL.String()
 }
 
-func traceInterceptor(compName string, dsn *manager.DSN, op string, options *config, logger *elog.Component) func(Handler) Handler {
+func traceInterceptor(compName string, dsn *manager.DSN, _ string, options *config, _ *elog.Component) func(Handler) Handler {
 	ip, port := peerInfo(dsn.Addr)
 	attrs := []attribute.KeyValue{
 		semconv.NetHostIPKey.String(ip),
 		semconv.NetPeerPortKey.Int(port),
 		semconv.NetTransportKey.String(dsn.Net),
 		semconv.DBNameKey.String(dsn.DBName),
+		attribute.String("db.component_name", compName),
 	}
 	tracer := etrace.NewTracer(trace.SpanKindClient)
 	return func(next Handler) Handler {
@@ -152,7 +155,7 @@ func traceInterceptor(compName string, dsn *manager.DSN, op string, options *con
 
 				_, span := tracer.Start(db.Statement.Context, operation, nil, trace.WithAttributes(attrs...))
 				defer span.End()
-				// 延迟执行 scope.CombinedConditionSql() 避免sqlVar被重复追加
+
 				next(db)
 				span.SetAttributes(
 					semconv.DBSystemKey.String(db.Dialector.Name()),
@@ -162,7 +165,11 @@ func traceInterceptor(compName string, dsn *manager.DSN, op string, options *con
 					semconv.NetPeerNameKey.String(dsn.Addr),
 					attribute.Int64("db.rows_affected", db.RowsAffected),
 				)
-				if db.Error != nil {
+				var err = db.Error
+				if !options.TraceRecordErrorOnNotFound && errors.Is(err, gorm.ErrRecordNotFound) {
+					err = nil
+				}
+				if err != nil {
 					span.RecordError(db.Error)
 					span.SetStatus(codes.Error, db.Error.Error())
 					return
@@ -170,7 +177,6 @@ func traceInterceptor(compName string, dsn *manager.DSN, op string, options *con
 				span.SetStatus(codes.Ok, "OK")
 				return
 			}
-
 			next(db)
 		}
 	}
@@ -183,13 +189,25 @@ func getContextValue(c context.Context, key string) string {
 	return cast.ToString(transport.Value(c, key))
 }
 
+// todo ipv6
 func peerInfo(addr string) (hostname string, port int) {
-	if idx := strings.IndexByte(addr, '['); idx >= 0 {
-		hostname = addr[:idx]
-	}
 	if idx := strings.IndexByte(addr, ':'); idx >= 0 {
-		port = func(p int, e error) int { return p }(strconv.Atoi(addr[idx+1:]))
 		hostname = addr[:idx]
+		port, _ = strconv.Atoi(addr[idx+1:])
 	}
 	return hostname, port
+}
+
+func fileWithLineNum() string {
+	// the second caller usually from internal, so set i start from 2
+	for i := 2; i < 15; i++ {
+		_, file, line, ok := runtime.Caller(i)
+		if !ok {
+			break
+		}
+		if (!(strings.Contains(file, "soedev/soego-component/egorm") && strings.HasSuffix(file, "interceptor.go")) && !strings.Contains(file, "gorm.io/gorm")) || strings.HasSuffix(file, "_test.go") {
+			return file + ":" + strconv.FormatInt(int64(line), 10)
+		}
+	}
+	return ""
 }

@@ -2,10 +2,11 @@ package dsn
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/soedev/soego-component/egorm/manager"
 	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
-	"strings"
 )
 
 var (

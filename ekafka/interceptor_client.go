@@ -180,7 +180,7 @@ func fileClientWithLineNum() string {
 		if !ok {
 			break
 		}
-		if (!(strings.Contains(file, "ego-component/ekafka") && strings.HasSuffix(file, "interceptor_client.go")) && !strings.Contains(file, "/ego-component/ekafka/producer.go")) || strings.HasSuffix(file, "_test.go") {
+		if (!(strings.Contains(file, "soedev/soego-component/ekafka") && strings.HasSuffix(file, "interceptor_client.go")) && !strings.Contains(file, "/soedev/soego-component/ekafka/producer.go")) || strings.HasSuffix(file, "_test.go") {
 			return file + ":" + strconv.FormatInt(int64(line), 10)
 		}
 	}

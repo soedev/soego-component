@@ -174,7 +174,7 @@ func fileServerWithLineNum() string {
 		if !ok {
 			break
 		}
-		if (!(strings.Contains(file, "ego-component/ekafka") && strings.HasSuffix(file, "interceptor_server.go")) && !strings.Contains(file, "/ego-component/ekafka/consumer.go")) || strings.HasSuffix(file, "_test.go") {
+		if (!(strings.Contains(file, "soedev/soego-component/ekafka") && strings.HasSuffix(file, "interceptor_server.go")) && !strings.Contains(file, "/soedev/soego-component/ekafka/consumer.go")) || strings.HasSuffix(file, "_test.go") {
 			return file + ":" + strconv.FormatInt(int64(line), 10)
 		}
 	}
